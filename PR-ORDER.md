@@ -6,18 +6,20 @@ never opened as a pull request.
 
 ## Order
 
-| # | Branch | Commit | Why this position |
-|---|---|---|---|
-| 1 | `fix/silent-ui-tests` | `02b1d2f` | Without it the UI tests of every other branch play real sounds while reviewing locally. Touches only tests and `sound.go`. |
-| 2 | `fix/windows-exit-waits-for-key` | `8b55900` | One function in `cmd/hrdx/input_windows.go`, no conflicts with anything. |
-| 3 | `fix/agent-busy-detection` | `8db0ca4` | Bug fix, independent of the others. |
-| 4 | `fix/holder-single-instance` | `ef92088` | Bug fix, independent. Mention the known holder hang (see below). |
-| 5 | `feat/resizable-sidebar` | `8b4fa22` | Smallest feature, adds one state field. |
-| 6 | `feat/default-split-direction` | `197eb73` | Adds a key (`v`) and one state field. |
-| 7 | `feat/collapsible-workspaces` | `eeb449f` | Adds two state fields and a settings row. |
-| 8 | `feat/workspace-subrepos` | `f89e0e7` | Largest change: state, socket API, settings, sidebar. Last so it rebases onto the others once. |
+| # | PR | Branch | Commit | Why this position |
+|---|---|---|---|---|
+| 1 | #40 | `fix/silent-ui-tests` | `02b1d2f` | Without it the UI tests of every other branch play real sounds while reviewing locally. Touches only tests and `sound.go`. |
+| 2 | #41 | `fix/windows-exit-waits-for-key` | `8b55900` | One function in `cmd/hrdx/input_windows.go`, no conflicts with anything. |
+| 3 | #42 | `fix/agent-busy-detection` | `8db0ca4` | Bug fix, independent of the others. |
+| 4 | #43 | `fix/holder-single-instance` | `ef92088` | Bug fix, independent. Mention the known holder hang (see below). |
+| 5 | #44 | `feat/resizable-sidebar` | `8b4fa22` | Smallest feature, adds one state field. |
+| 6 | #45 | `feat/default-split-direction` | `197eb73` | Adds a key (`v`) and one state field. |
+| 7 | #46 | `feat/collapsible-workspaces` | `eeb449f` | Adds two state fields and a settings row. |
+| 8 | #47 | `feat/workspace-subrepos` | `448af9a` | Largest change: state, socket API, settings, sidebar. Last so it rebases onto the others once. |
 
-1 to 4 can be opened at the same time; they do not conflict with each other.
+All eight were opened on 2026-10-21 against `patriceckhart/hrdx` and pass CI
+(vet, gofmt, `go test -race ./...` on Linux, macOS, and Windows). 1 to 4 do not
+conflict with each other.
 
 ## Expected conflicts
 
@@ -41,7 +43,10 @@ at the end). `local/combined` shows the resolved result.
   run, user-visible and compatibility effects. The commit message already
   contains most of it.
 - Commands run locally on Windows: `gofmt`, `go vet ./...`, `go test ./...`.
-  `go test -race ./...` could not run (no C compiler); CI covers it.
+  `go test -race ./...` could not run (no C compiler); CI covers it. It caught
+  one race in #47 (`TestHideAndUnhideSubrepos` appended to a slice from the
+  concurrent git stubs); fixed in the test with a mutex, commit amended and
+  force-pushed.
 - `fix/windows-exit-waits-for-key`: no automated test, the console cannot be
   reproduced in `go test`. Verified with real builds: the previous build was
   still running 5 s after `ctrl+b q` in 3 of 3 runs, the fix exited in about

@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -291,11 +293,22 @@ func TestHideAndUnhideSubrepos(t *testing.T) {
 	root := t.TempDir()
 	makeRepo(t, filepath.Join(root, "api"))
 	makeRepo(t, filepath.Join(root, "web"))
+	// collectSubrepos calls the stub from several goroutines.
+	var mu sync.Mutex
 	var scanned []string
 	stubGitStatus(t, func(dir string) subrepo {
+		mu.Lock()
+		defer mu.Unlock()
 		scanned = append(scanned, filepath.Base(dir))
 		return subrepo{branch: "main"}
 	})
+	scannedNames := func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		sorted := append([]string(nil), scanned...)
+		slices.Sort(sorted)
+		return strings.Join(sorted, ",")
+	}
 	model := newTestModel(root)
 	model.width, model.height = 100, 30
 	model.subrepoDepth = 1
@@ -329,11 +342,13 @@ func TestHideAndUnhideSubrepos(t *testing.T) {
 		t.Fatalf("stale scan resurrected a hidden folder: %q", got)
 	}
 
+	mu.Lock()
 	scanned = nil
+	mu.Unlock()
 	updated, _ = model.update(refreshSubrepos(model.subrepoGen, root, 1, model.hiddenSubreposFor(root))())
 	model = updated.(Model)
-	if strings.Join(scanned, ",") != "web" {
-		t.Fatalf("git ran for %v", scanned)
+	if got := scannedNames(); got != "web" {
+		t.Fatalf("git ran for %v", got)
 	}
 
 	saved := model.snapshot()
