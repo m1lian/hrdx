@@ -90,6 +90,10 @@ type State struct {
 	// SubrepoDepth is how many directory levels below each workspace are
 	// searched for nested git repositories. Zero disables the feature.
 	SubrepoDepth int `json:"subrepo_depth,omitempty"`
+
+	// SidebarWidth is the expanded sidebar width chosen by dragging its
+	// border. Zero keeps the default width.
+	SidebarWidth int `json:"sidebar_width,omitempty"`
 }
 
 // DefaultPath returns the state file location under the user config dir.
