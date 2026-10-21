@@ -7,7 +7,7 @@ func (m *Model) snapshot() state.State {
 	saved := state.State{
 		Selected: m.selected, Sound: m.soundOn, SoundKind: m.soundKind,
 		Notify: m.notifyOn, Theme: m.themeName, DisableAutoCopy: !m.autoCopy,
-		SidebarCollapsed: m.sideCollapsed,
+		SidebarCollapsed: m.sideCollapsed, WorkspaceFolding: m.foldEnabled,
 	}
 	for _, spec := range agentSpecs {
 		if m.disabled[spec.kind] {
@@ -20,6 +20,7 @@ func (m *Model) snapshot() state.State {
 			Name:      currentSpace.name,
 			CWD:       currentSpace.cwd,
 			Active:    currentSpace.active,
+			Folded:    currentSpace.folded,
 		}
 		for _, currentTab := range currentSpace.tabs {
 			savedTab := state.Tab{Name: currentTab.name}
@@ -74,7 +75,7 @@ func (m *Model) restore(saved state.State) {
 		if ws.CWD == "" || len(savedTabs) == 0 {
 			continue
 		}
-		restored := &space{name: ws.Name, cwd: ws.CWD, active: ws.Active}
+		restored := &space{name: ws.Name, cwd: ws.CWD, active: ws.Active, folded: ws.Folded}
 		if validateGroupPath(ws.GroupPath) == nil {
 			restored.groupPath = append([]string(nil), ws.GroupPath...)
 		}

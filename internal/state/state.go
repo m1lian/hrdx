@@ -46,6 +46,9 @@ type Workspace struct {
 	Tabs      []Tab    `json:"tabs,omitempty"`
 	Active    int      `json:"active,omitempty"`
 
+	// Folded hides the workspace's branch and pane rows in the sidebar.
+	Folded bool `json:"folded,omitempty"`
+
 	// Legacy single-layout fields, read for states written before tabs.
 	Panes    []Pane `json:"panes,omitempty"`
 	Layout   *Node  `json:"layout,omitempty"`
@@ -77,6 +80,10 @@ type State struct {
 	// SidebarCollapsed remembers whether the workspace sidebar is compact.
 	// Its zero value keeps older state files expanded.
 	SidebarCollapsed bool `json:"sidebar_collapsed,omitempty"`
+
+	// WorkspaceFolding enables per-workspace fold toggles in the sidebar.
+	// Off by default; each workspace's Folded flag is kept either way.
+	WorkspaceFolding bool `json:"workspace_folding,omitempty"`
 }
 
 // DefaultPath returns the state file location under the user config dir.

@@ -73,7 +73,10 @@ func (m Model) settingsRows() []settingsRow {
 		}
 		return rows
 	case 3: // terminal
-		return []settingsRow{{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"}}
+		return []settingsRow{
+			{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"},
+			{settingsCheck(m.foldEnabled) + "allow folding workspaces in the sidebar", "workspace-folding"},
+		}
 	case 4: // plugins
 		return m.pluginSettingsRows()
 	default: // agents
@@ -131,6 +134,12 @@ func (m *Model) toggleSettingsRow(row settingsRow) tea.Cmd {
 		if m.notifyOn {
 			systemNotify()
 		}
+	}
+	if row.action == "workspace-folding" {
+		// Folds stay saved while the option is off and return with it.
+		m.foldEnabled = !m.foldEnabled
+		m.sideScroll = 0
+		m.persist()
 	}
 	if row.action == "auto-copy" {
 		m.autoCopy = !m.autoCopy
