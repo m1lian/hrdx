@@ -1,13 +1,18 @@
 package ui
 
-import "github.com/patriceckhart/hrdx/internal/state"
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/patriceckhart/hrdx/internal/state"
+)
 
 // snapshot converts the live model into its serializable form.
 func (m *Model) snapshot() state.State {
 	saved := state.State{
 		Selected: m.selected, Sound: m.soundOn, SoundKind: m.soundKind,
 		Notify: m.notifyOn, Theme: m.themeName, DisableAutoCopy: !m.autoCopy,
-		SidebarCollapsed: m.sideCollapsed,
+		SidebarCollapsed: m.sideCollapsed, SubrepoDepth: m.subrepoDepth,
 	}
 	for _, spec := range agentSpecs {
 		if m.disabled[spec.kind] {
@@ -20,6 +25,8 @@ func (m *Model) snapshot() state.State {
 			Name:      currentSpace.name,
 			CWD:       currentSpace.cwd,
 			Active:    currentSpace.active,
+
+			HiddenSubrepos: sortedKeys(currentSpace.hiddenSubrepos),
 		}
 		for _, currentTab := range currentSpace.tabs {
 			savedTab := state.Tab{Name: currentTab.name}
@@ -34,6 +41,7 @@ func (m *Model) snapshot() state.State {
 				}
 				savedTab.Panes = append(savedTab.Panes, state.Pane{
 					Kind: currentPane.kind, Name: currentPane.name, Session: currentPane.session,
+					CWD: currentPane.cwd,
 				})
 			}
 			savedTab.Layout = snapshotNode(currentTab.layout, index)
@@ -75,6 +83,14 @@ func (m *Model) restore(saved state.State) {
 			continue
 		}
 		restored := &space{name: ws.Name, cwd: ws.CWD, active: ws.Active}
+		for _, rel := range ws.HiddenSubrepos {
+			if rel = cleanSubrepoRel(rel); rel != "" {
+				if restored.hiddenSubrepos == nil {
+					restored.hiddenSubrepos = map[string]bool{}
+				}
+				restored.hiddenSubrepos[rel] = true
+			}
+		}
 		if validateGroupPath(ws.GroupPath) == nil {
 			restored.groupPath = append([]string(nil), ws.GroupPath...)
 		}
@@ -94,6 +110,7 @@ func (m *Model) restore(saved state.State) {
 					kind:    kind,
 					resume:  isAgentKind(kind),
 					session: savedPane.Session,
+					cwd:     restoredPaneDir(savedPane.CWD),
 				})
 				m.nextID++
 			}
@@ -111,6 +128,18 @@ func (m *Model) restore(saved state.State) {
 		m.spaces = append(m.spaces, restored)
 	}
 	m.selected = clampInt(saved.Selected, 0, max(0, len(m.spaces)-1))
+}
+
+// restoredPaneDir drops a saved directory that no longer exists, so the
+// pane falls back to the workspace directory.
+func restoredPaneDir(path string) string {
+	if path == "" || !filepath.IsAbs(path) {
+		return ""
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		return ""
+	}
+	return path
 }
 
 func restoreNode(n *state.Node, panes []*pane) *splitNode {

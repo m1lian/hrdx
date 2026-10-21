@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -73,7 +74,23 @@ func (m Model) settingsRows() []settingsRow {
 		}
 		return rows
 	case 3: // terminal
-		return []settingsRow{{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"}}
+		rows := []settingsRow{{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"}}
+		rows = append(rows, settingsRow{settingsCheck(m.subrepoDepth > 0) + "show nested git repositories in the sidebar", "subrepos"})
+		if m.subrepoDepth == 0 {
+			return rows
+		}
+		for depth := 1; depth <= maxSubrepoDepth; depth++ {
+			mark := "( ) "
+			if m.subrepoDepth == depth {
+				mark = "(•) "
+			}
+			label := "search 1 folder level"
+			if depth > 1 {
+				label = "search " + strconv.Itoa(depth) + " folder levels"
+			}
+			rows = append(rows, settingsRow{"  " + mark + label, "subrepos:" + strconv.Itoa(depth)})
+		}
+		return rows
 	case 4: // plugins
 		return m.pluginSettingsRows()
 	default: // agents
@@ -110,6 +127,19 @@ func (m *Model) toggleSettingsRow(row settingsRow) tea.Cmd {
 		m.persist()
 		// Preview so the choice is audible immediately.
 		playSound(kind)
+		return nil
+	}
+	if row.action == "subrepos" {
+		if m.subrepoDepth > 0 {
+			m.subrepoLastDepth = m.subrepoDepth
+			return m.setSubrepoDepth(0)
+		}
+		return m.setSubrepoDepth(max(1, m.subrepoLastDepth))
+	}
+	if value, ok := strings.CutPrefix(row.action, "subrepos:"); ok {
+		if depth, err := strconv.Atoi(value); err == nil {
+			return m.setSubrepoDepth(depth)
+		}
 		return nil
 	}
 	if name, ok := strings.CutPrefix(row.action, "theme:"); ok {
