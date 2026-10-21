@@ -74,7 +74,10 @@ func (m Model) settingsRows() []settingsRow {
 		}
 		return rows
 	case 3: // terminal
-		rows := []settingsRow{{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"}}
+		rows := []settingsRow{
+			{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"},
+			{settingsCheck(m.foldEnabled) + "allow folding workspaces in the sidebar", "workspace-folding"},
+		}
 		rows = append(rows, settingsRow{settingsCheck(m.subrepoDepth > 0) + "show nested git repositories in the sidebar", "subrepos"})
 		if m.subrepoDepth == 0 {
 			return rows
@@ -161,6 +164,12 @@ func (m *Model) toggleSettingsRow(row settingsRow) tea.Cmd {
 		if m.notifyOn {
 			systemNotify()
 		}
+	}
+	if row.action == "workspace-folding" {
+		// Folds stay saved while the option is off and return with it.
+		m.foldEnabled = !m.foldEnabled
+		m.sideScroll = 0
+		m.persist()
 	}
 	if row.action == "auto-copy" {
 		m.autoCopy = !m.autoCopy

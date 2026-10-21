@@ -13,6 +13,7 @@ func (m *Model) snapshot() state.State {
 		Selected: m.selected, Sound: m.soundOn, SoundKind: m.soundKind,
 		Notify: m.notifyOn, Theme: m.themeName, DisableAutoCopy: !m.autoCopy,
 		SidebarCollapsed: m.sideCollapsed, SubrepoDepth: m.subrepoDepth, SidebarWidth: m.sideWidth,
+		WorkspaceFolding: m.foldEnabled,
 	}
 	for _, spec := range agentSpecs {
 		if m.disabled[spec.kind] {
@@ -25,6 +26,7 @@ func (m *Model) snapshot() state.State {
 			Name:      currentSpace.name,
 			CWD:       currentSpace.cwd,
 			Active:    currentSpace.active,
+			Folded:    currentSpace.folded,
 
 			HiddenSubrepos: sortedKeys(currentSpace.hiddenSubrepos),
 		}
@@ -82,7 +84,7 @@ func (m *Model) restore(saved state.State) {
 		if ws.CWD == "" || len(savedTabs) == 0 {
 			continue
 		}
-		restored := &space{name: ws.Name, cwd: ws.CWD, active: ws.Active}
+		restored := &space{name: ws.Name, cwd: ws.CWD, active: ws.Active, folded: ws.Folded}
 		for _, rel := range ws.HiddenSubrepos {
 			if rel = cleanSubrepoRel(rel); rel != "" {
 				if restored.hiddenSubrepos == nil {

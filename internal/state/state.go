@@ -55,6 +55,9 @@ type Workspace struct {
 	// relative to CWD, that the sidebar should not show.
 	HiddenSubrepos []string `json:"hidden_subrepos,omitempty"`
 
+	// Folded hides the workspace's branch and pane rows in the sidebar.
+	Folded bool `json:"folded,omitempty"`
+
 	// Legacy single-layout fields, read for states written before tabs.
 	Panes    []Pane `json:"panes,omitempty"`
 	Layout   *Node  `json:"layout,omitempty"`
@@ -94,6 +97,10 @@ type State struct {
 	// SidebarWidth is the expanded sidebar width chosen by dragging its
 	// border. Zero keeps the default width.
 	SidebarWidth int `json:"sidebar_width,omitempty"`
+
+	// WorkspaceFolding enables per-workspace fold toggles in the sidebar.
+	// Off by default; each workspace's Folded flag is kept either way.
+	WorkspaceFolding bool `json:"workspace_folding,omitempty"`
 }
 
 // DefaultPath returns the state file location under the user config dir.

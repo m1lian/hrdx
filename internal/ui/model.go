@@ -120,6 +120,7 @@ type space struct {
 	cwd       string
 	tabs      []*tab
 	active    int
+	folded    bool // sidebar shows only the name row
 
 	hiddenSubrepos map[string]bool // relative sub-repository paths hidden from the sidebar
 }
@@ -177,6 +178,7 @@ type Model struct {
 	notifyOn      bool            // post a desktop notification on finish
 	themeName     string          // active bundled or user theme name
 	autoCopy      bool            // copy completed text selections to the clipboard
+	foldEnabled   bool            // workspaces can be folded in the sidebar
 	clipboardCopy func(string)    // process-local clipboard writer, replaceable in tests
 	wasBusy       map[int]bool    // pane id -> spinner seen, for finish notifications
 	soundSeq      map[int]uint64  // invalidates stale agent-finish confirmations
@@ -295,6 +297,13 @@ func (m Model) menuItems() []menuItem {
 	if m.menuSpace != nil {
 		target = "sidebar"
 		builtins = spaceMenuItems
+		if m.foldEnabled {
+			fold := menuItem{"Collapse", "space-fold"}
+			if m.menuSpace.folded {
+				fold.label = "Expand"
+			}
+			builtins = append(append([]menuItem{}, spaceMenuItems...), fold)
+		}
 		if hidden := len(m.menuSpace.hiddenSubrepos); hidden > 0 {
 			builtins = append(append([]menuItem{}, builtins...),
 				menuItem{fmt.Sprintf("Show hidden folders (%d)", hidden), "space-unhide-subrepos"})
@@ -481,7 +490,7 @@ func New(config Config, paths []string, statePath string, saved state.State) Mod
 		wasBusy: map[int]bool{}, soundSeq: map[int]uint64{}, paneAttention: map[int]bool{},
 		soundOn: saved.Sound, status: harnessProblem,
 		soundKind: saved.SoundKind, notifyOn: saved.Notify, themeName: saved.Theme,
-		autoCopy: !saved.DisableAutoCopy, clipboardCopy: copyToClipboard,
+		autoCopy: !saved.DisableAutoCopy, clipboardCopy: copyToClipboard, foldEnabled: saved.WorkspaceFolding,
 		sideCollapsed: saved.SidebarCollapsed,
 		prefixKeys:    buildPrefixKeys(keymapOverrides), navKeys: buildNavigationKeys(keymapOverrides), keyOverrides: keymapOverrides}
 	model.prefixTrigger = model.primaryKey("prefix")
@@ -1814,6 +1823,8 @@ func (m Model) runMenuAction(action string) (tea.Model, tea.Cmd) {
 			m.openKindPicker("tab", targetSpace, "", at)
 		case "space-unhide-subrepos":
 			return m, m.unhideSubrepos(targetSpace)
+		case "space-fold":
+			m.toggleSpaceFold(targetSpace)
 		}
 		return m, nil
 	}
@@ -2213,6 +2224,10 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	hit := m.sidebarHit(msg.Y - 1)
 	switch hit.kind {
 	case "space":
+		if foldToggleHit(hit, msg.X) && hit.space >= 0 && hit.space < len(m.spaces) {
+			m.toggleSpaceFold(m.spaces[hit.space])
+			return m, nil
+		}
 		if hit.space >= 0 && hit.space < len(m.spaces) {
 			m.selected = hit.space
 			m.clearFocusedAttention()
@@ -2329,6 +2344,7 @@ type sidebarRow struct {
 	tab    int
 	pane   int
 	tabRow bool
+	fold   bool // workspace name row carrying the fold toggle
 
 	subrepo int // index into the workspace's sub-repository cache, -1 for folder rows
 }
@@ -2492,15 +2508,22 @@ func (m Model) sidebarRows() []sidebarRow {
 		if spaceIndex == m.selected {
 			rail = styleSpaceSel.Render("▍")
 		}
-		spaceName := truncate(currentSpace.name, width-3)
 		if m.sideCollapsed {
-			spaceName = compactSidebarName(currentSpace.name, 6)
+			rows = append(rows, sidebarRow{
+				label: rail + styleSpaceDim.Render(compactSidebarName(currentSpace.name, 6)),
+				kind:  "space", space: spaceIndex, tab: -1, pane: -1,
+			})
+		} else if m.foldEnabled {
+			rows = append(rows, m.spaceNameRow(spaceIndex, rail, width))
+		} else {
+			rows = append(rows, sidebarRow{
+				label: rail + styleSpaceDim.Render(truncate(currentSpace.name, width-3)),
+				kind:  "space", space: spaceIndex, tab: -1, pane: -1,
+			})
 		}
-		label := rail + styleSpaceDim.Render(spaceName)
-		rows = append(rows, sidebarRow{
-			label: label,
-			kind:  "space", space: spaceIndex, tab: -1, pane: -1,
-		})
+		if m.foldEnabled && currentSpace.folded {
+			continue
+		}
 		if branch := m.gitBranch(currentSpace.cwd); branch.value != "" {
 			suffixWidth := 0
 			suffix := ""
