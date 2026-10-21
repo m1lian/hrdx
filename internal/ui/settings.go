@@ -78,6 +78,14 @@ func (m Model) settingsRows() []settingsRow {
 			{settingsCheck(m.autoCopy) + "automatically copy selected text", "auto-copy"},
 			{settingsCheck(m.foldEnabled) + "allow folding workspaces in the sidebar", "workspace-folding"},
 		}
+		rows = append(rows, settingsRow{"default split direction:", ""})
+		for _, value := range splitDirections {
+			mark := "( ) "
+			if m.splitDirection == value {
+				mark = "(•) "
+			}
+			rows = append(rows, settingsRow{"  " + mark + splitDirectionLabel(value), "split-dir:" + value})
+		}
 		rows = append(rows, settingsRow{settingsCheck(m.subrepoDepth > 0) + "show nested git repositories in the sidebar", "subrepos"})
 		if m.subrepoDepth == 0 {
 			return rows
@@ -170,6 +178,11 @@ func (m *Model) toggleSettingsRow(row settingsRow) tea.Cmd {
 		m.foldEnabled = !m.foldEnabled
 		m.sideScroll = 0
 		m.persist()
+	}
+	if value, ok := strings.CutPrefix(row.action, "split-dir:"); ok {
+		m.splitDirection = validSplitDirection(value)
+		m.persist()
+		return nil
 	}
 	if row.action == "auto-copy" {
 		m.autoCopy = !m.autoCopy

@@ -101,6 +101,10 @@ type State struct {
 	// WorkspaceFolding enables per-workspace fold toggles in the sidebar.
 	// Off by default; each workspace's Folded flag is kept either way.
 	WorkspaceFolding bool `json:"workspace_folding,omitempty"`
+
+	// SplitDirection is where the primary prefix split keys put new panes:
+	// empty (right), "down", or "auto" (the focused pane's longer side).
+	SplitDirection string `json:"split_direction,omitempty"`
 }
 
 // DefaultPath returns the state file location under the user config dir.
