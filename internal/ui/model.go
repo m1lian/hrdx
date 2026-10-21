@@ -197,6 +197,8 @@ type Model struct {
 	findIndex     int               // selected row of the find window
 	quitting      bool              // shutting down: exits must not edit the layout
 
+	splitDirection string // default prefix split: "" (right), "down", or "auto"
+
 	plugins             *plugin.Runtime
 	pluginStates        map[string]plugin.Status
 	pluginTexts         map[string]pluginStatusText
@@ -466,6 +468,7 @@ func New(config Config, paths []string, statePath string, saved state.State) Mod
 		sideCollapsed: saved.SidebarCollapsed,
 		prefixKeys:    buildPrefixKeys(keymapOverrides), navKeys: buildNavigationKeys(keymapOverrides), keyOverrides: keymapOverrides}
 	model.prefixTrigger = model.primaryKey("prefix")
+	model.splitDirection = validSplitDirection(saved.SplitDirection)
 	if statePath != "" {
 		for _, problem := range []string{
 			loadSounds(filepath.Dir(statePath)),
@@ -1297,21 +1300,22 @@ func (m Model) runPrefix(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "quit":
 		m.closeAll()
 		return m, tea.Quit
-	case "picker-right":
-		m.openKindPicker("split-right", nil, "", rect{x: m.sidebarContentWidth() + 2, y: 1})
-	case "picker-down":
-		m.openKindPicker("split-down", nil, "", rect{x: m.sidebarContentWidth() + 2, y: 1})
-	case "agent-right":
-		return m.splitCurrent(m.config.DefaultAgent, true)
-	case "agent-down":
-		return m.splitCurrent(m.config.DefaultAgent, false)
+	case "picker-right", "picker-down":
+		pick := "split-down"
+		if m.prefixSplitVertical(action, msg.String()) {
+			pick = "split-right"
+		}
+		m.openKindPicker(pick, nil, "", rect{x: m.sidebarContentWidth() + 2, y: 1})
+	case "agent-right", "agent-down":
+		return m.splitCurrent(m.config.DefaultAgent, m.prefixSplitVertical(action, msg.String()))
+	case "split-cycle":
+		m.cycleSplitDirection()
+		return m, m.flashInfo("default split: " + splitDirectionLabel(m.splitDirection))
 	case "agent-cycle":
 		m.cycleAgent()
 		return m, m.flashInfo("default agent: " + m.config.DefaultAgent)
-	case "shell-right":
-		return m.splitCurrent("shell", true)
-	case "shell-down":
-		return m.splitCurrent("shell", false)
+	case "shell-right", "shell-down":
+		return m.splitCurrent("shell", m.prefixSplitVertical(action, msg.String()))
 	case "workspace":
 		return m.openNewSpaceInput()
 	case "tab-new":
@@ -3129,6 +3133,7 @@ func (m Model) prefixHintEntries() [][2]string {
 		{keys("picker-right", "picker-down"), "split"},
 		{keys("agent-right", "agent-down"), "agent"},
 		{keys("shell-right", "shell-down"), "shell"},
+		{keys("split-cycle"), "split dir"},
 		{keys("workspace"), "workspace"},
 		{keys("tab-new"), "tab"},
 		{keys("tab-next", "tab-prev"), "tabs"},

@@ -77,6 +77,10 @@ type State struct {
 	// SidebarCollapsed remembers whether the workspace sidebar is compact.
 	// Its zero value keeps older state files expanded.
 	SidebarCollapsed bool `json:"sidebar_collapsed,omitempty"`
+
+	// SplitDirection is where the primary prefix split keys put new panes:
+	// empty (right), "down", or "auto" (the focused pane's longer side).
+	SplitDirection string `json:"split_direction,omitempty"`
 }
 
 // DefaultPath returns the state file location under the user config dir.
