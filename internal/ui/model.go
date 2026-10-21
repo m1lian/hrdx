@@ -101,6 +101,7 @@ type pane struct {
 	resume   bool  // restored agent pane: relaunch resuming its session
 	session  int64 // holder session to reattach to on restore, 0 = start fresh
 	floating *floatPlacement
+	cwd      string // start directory when not the workspace's, e.g. a sub-repository
 }
 
 // tab is one tabbed layout of panes inside a workspace.
@@ -117,6 +118,8 @@ type space struct {
 	cwd       string
 	tabs      []*tab
 	active    int
+
+	hiddenSubrepos map[string]bool // relative sub-repository paths hidden from the sidebar
 }
 
 // tab returns the active tab, never nil for a live workspace.
@@ -196,6 +199,13 @@ type Model struct {
 	keyOverrides  map[string]string // action -> key from keys.json, for hints
 	findIndex     int               // selected row of the find window
 	quitting      bool              // shutting down: exits must not edit the layout
+
+	subrepoDepth int                     // sub-repository search depth, 0 = off
+	subrepoGen   int                     // invalidates in-flight scans after a setting change
+	subrepos     map[string]subrepoCache // workspace cwd -> discovered repositories
+
+	pickFromSubrepo  bool // the open picker came from a sub-repository row
+	subrepoLastDepth int  // depth restored when the setting is switched back on
 
 	plugins             *plugin.Runtime
 	pluginStates        map[string]plugin.Status
@@ -280,6 +290,10 @@ func (m Model) menuItems() []menuItem {
 	if m.menuSpace != nil {
 		target = "sidebar"
 		builtins = spaceMenuItems
+		if hidden := len(m.menuSpace.hiddenSubrepos); hidden > 0 {
+			builtins = append(append([]menuItem{}, builtins...),
+				menuItem{fmt.Sprintf("Show hidden folders (%d)", hidden), "space-unhide-subrepos"})
+		}
 	} else if m.menuTab != nil {
 		target = "tab"
 		builtins = tabMenuItems
@@ -466,6 +480,8 @@ func New(config Config, paths []string, statePath string, saved state.State) Mod
 		sideCollapsed: saved.SidebarCollapsed,
 		prefixKeys:    buildPrefixKeys(keymapOverrides), navKeys: buildNavigationKeys(keymapOverrides), keyOverrides: keymapOverrides}
 	model.prefixTrigger = model.primaryKey("prefix")
+	model.subrepoDepth = clampInt(saved.SubrepoDepth, 0, maxSubrepoDepth)
+	model.subrepos = map[string]subrepoCache{}
 	if statePath != "" {
 		for _, problem := range []string{
 			loadSounds(filepath.Dir(statePath)),
@@ -619,6 +635,9 @@ func checkForUpdate(cacheDir, version string) tea.Cmd {
 func (m Model) Init() tea.Cmd {
 	var commands []tea.Cmd
 	commands = append(commands, checkForUpdate(m.config.CacheDir, m.config.Version), waitPluginEvent(m.plugins))
+	if m.subrepoDepth > 0 {
+		commands = append(commands, subrepoTick(m.subrepoGen, 0))
+	}
 	m.gcHolderSessions()
 	for _, currentSpace := range m.spaces {
 		for _, currentTab := range currentSpace.tabs {
@@ -662,6 +681,9 @@ func (m Model) startPane(owner *space, target *pane) tea.Cmd {
 		}
 	}
 	cwd := owner.cwd
+	if target.cwd != "" {
+		cwd = target.cwd
+	}
 	id := target.id
 
 	if m.holder != nil {
@@ -849,6 +871,10 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
 	case pluginTickMsg:
 		return m, m.publishPluginSnapshots()
+	case subrepoTickMsg:
+		return m.handleSubrepoTick(msg)
+	case subreposMsg:
+		return m.handleSubrepos(msg)
 	case pluginEventMsg:
 		return m, m.handlePluginEvent(msg.event)
 	case pluginActivationMsg:
@@ -1561,6 +1587,7 @@ func (m *Model) closeMenu() {
 	m.pickAction = ""
 	m.pickSpace = nil
 	m.pickPath = ""
+	m.pickFromSubrepo = false
 }
 
 // toggleAgent flips one agent kind in settings. The last enabled agent
@@ -1656,13 +1683,59 @@ func (m Model) runKindPick(kind string) (tea.Model, tea.Cmd) {
 		return m.splitCurrentSide(kind, false, true)
 	case "split-down":
 		return m.splitCurrent(kind, false)
+	case "subrepo-tab", "subrepo-split-right", "subrepo-split-down":
+		return m.openInSubrepo(target, path, kind, strings.TrimPrefix(action, "subrepo-"))
 	}
 	return m, nil
+}
+
+func (m Model) openInSubrepo(target *space, path, kind, where string) (tea.Model, tea.Cmd) {
+	if target == nil || path == "" {
+		return m, nil
+	}
+	for index, currentSpace := range m.spaces {
+		if currentSpace == target {
+			m.selected = index
+		}
+	}
+	var newPane *pane
+	switch where {
+	case "tab":
+		newPane = m.addTab(target, kind)
+	case "split-right":
+		newPane = m.addPaneSide(target, kind, true, false)
+	default:
+		newPane = m.addPaneSide(target, kind, false, false)
+	}
+	if filepath.Clean(path) != filepath.Clean(target.cwd) {
+		newPane.cwd = path
+	}
+	m.resizePanes(target)
+	m.persist()
+	return m, m.startPane(target, newPane)
 }
 
 func (m Model) runMenuAction(action string) (tea.Model, tea.Cmd) {
 	if kind, ok := strings.CutPrefix(action, "kind:"); ok {
 		return m.runKindPick(kind)
+	}
+	if where, ok := strings.CutPrefix(action, "subrepo:"); ok {
+		target, path, at := m.pickSpace, m.pickPath, m.menuAt
+		m.closeMenu()
+		if target == nil || !slices.Contains(m.spaces, target) {
+			return m, nil
+		}
+		if where == "hide" {
+			m.hideSubrepo(target, path)
+			return m, nil
+		}
+		if where == "space" {
+			m.openKindPicker("space", nil, path, at)
+		} else {
+			m.openKindPicker("subrepo-"+where, target, path, at)
+		}
+		m.pickFromSubrepo = true
+		return m, nil
 	}
 	targetPane := m.menuPane
 	targetTab := m.menuTab
@@ -1705,6 +1778,8 @@ func (m Model) runMenuAction(action string) (tea.Model, tea.Cmd) {
 			m.closeCurrentSpace()
 		case "space-tab":
 			m.openKindPicker("tab", targetSpace, "", at)
+		case "space-unhide-subrepos":
+			return m, m.unhideSubrepos(targetSpace)
 		}
 		return m, nil
 	}
@@ -1850,7 +1925,7 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			hit := m.sidebarHit(msg.Y - 1)
-			descendant := hit.kind == "space" || hit.kind == "tab" || hit.kind == "pane"
+			descendant := hit.kind == "space" || hit.kind == "tab" || hit.kind == "pane" || hit.kind == "subrepo"
 			if descendant && hit.space >= 0 && hit.space < len(m.spaces) &&
 				m.spaces[hit.space] != m.dragSpace {
 				if m.moveSpaceTo(m.dragSpace, hit.space) {
@@ -2045,6 +2120,11 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		target := m.spaces[hit.space]
 		at := rect{x: msg.X, y: msg.Y - 1}
 		switch hit.kind {
+		case "subrepo":
+			if owner, repo, ok := m.subrepoAt(hit); ok {
+				m.selected = hit.space
+				m.openSubrepoPicker(owner, repo.path, at)
+			}
 		case "space":
 			m.selected = hit.space
 			m.clearFocusedAttention()
@@ -2111,6 +2191,14 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				// pane, both of which belong to the saved state.
 				m.persist()
 			}
+		}
+	case "subrepo":
+		if !subrepoTextHit(hit.label, msg.X) {
+			return m, nil
+		}
+		if owner, repo, ok := m.subrepoAt(hit); ok {
+			m.selected = hit.space
+			m.openSubrepoPicker(owner, repo.path, rect{x: msg.X, y: msg.Y - 1})
 		}
 	case "new":
 		return m.openNewSpaceInput()
@@ -2189,6 +2277,8 @@ type sidebarRow struct {
 	tab    int
 	pane   int
 	tabRow bool
+
+	subrepo int // index into the workspace's sub-repository cache, -1 for folder rows
 }
 
 // paneBusy reports whether a pane running an agent (agent panes, or shell
@@ -2385,6 +2475,7 @@ func (m Model) sidebarRows() []sidebarRow {
 				kind:  "space", space: spaceIndex, tab: -1, pane: -1,
 			})
 		}
+		rows = append(rows, m.subrepoRows(spaceIndex, rail, width)...)
 
 		showTabs := len(currentSpace.tabs) > 1
 		for tabIndex, currentTab := range currentSpace.tabs {

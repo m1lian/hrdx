@@ -294,6 +294,7 @@ func (m *Model) apiStatus() api.Status {
 			Path:      currentSpace.cwd,
 			Selected:  spaceIndex == m.selected,
 			Branch:    m.gitBranch(currentSpace.cwd).value,
+			Subrepos:  m.apiSubrepos(currentSpace.cwd),
 		}
 		for tabIndex, currentTab := range currentSpace.tabs {
 			tabStatus := api.TabStatus{

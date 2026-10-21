@@ -19,6 +19,11 @@ type Pane struct {
 	// the pane was not holder-backed. On restore hrdx reattaches to the
 	// session instead of starting a new process.
 	Session int64 `json:"session,omitempty"`
+
+	// CWD is the pane's start directory when it differs from the
+	// workspace directory, e.g. a nested repository. Empty means the
+	// workspace directory.
+	CWD string `json:"cwd,omitempty"`
 }
 
 // Node mirrors the split tree. Leaf nodes reference a pane by its index in
@@ -45,6 +50,10 @@ type Workspace struct {
 	CWD       string   `json:"cwd"`
 	Tabs      []Tab    `json:"tabs,omitempty"`
 	Active    int      `json:"active,omitempty"`
+
+	// HiddenSubrepos lists nested repositories, as slash-separated paths
+	// relative to CWD, that the sidebar should not show.
+	HiddenSubrepos []string `json:"hidden_subrepos,omitempty"`
 
 	// Legacy single-layout fields, read for states written before tabs.
 	Panes    []Pane `json:"panes,omitempty"`
@@ -77,6 +86,10 @@ type State struct {
 	// SidebarCollapsed remembers whether the workspace sidebar is compact.
 	// Its zero value keeps older state files expanded.
 	SidebarCollapsed bool `json:"sidebar_collapsed,omitempty"`
+
+	// SubrepoDepth is how many directory levels below each workspace are
+	// searched for nested git repositories. Zero disables the feature.
+	SubrepoDepth int `json:"subrepo_depth,omitempty"`
 }
 
 // DefaultPath returns the state file location under the user config dir.
